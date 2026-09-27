@@ -59,12 +59,18 @@ JOB_CELLS = {
         "profile": "workbench",
         "params": {"command": "nvidia-smi", "gpu_minutes_estimate": 15},
     },
+    "calibration": {
+        "job_id": "calibration-001",
+        "profile": "calibration",
+        "params": {"gpu_minutes_estimate": 10},
+    },
 }
 
 NOTES = {
     "photogrammetry": "Input: a Kaggle dataset with an images/ folder. Attach it under Add Input, or the job downloads it by slug. Enable Settings -> Accelerator -> GPU T4 x2 first.",
     "llm-serve": "Enable GPU T4 x2. After ~5 min the output cell prints endpoint.json with the base_url - use it from any OpenAI-compatible client with your X-API-Key.",
     "workbench": "Edit command to anything. GPU T4 x2 optional (set by the run stage).",
+    "calibration": "One-time platform calibration. Enable GPU T4 x2, Run All, then paste the full output back. It prints env details, COLMAP install time, a GPU SIFT smoke test, a tunnel+API-key test, and quota-reading instructions.",
 }
 
 
