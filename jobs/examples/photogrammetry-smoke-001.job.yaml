@@ -1,0 +1,8 @@
+job_id: photogrammetry-smoke-001
+profile: photogrammetry
+params:
+  input_dataset: jarri81/kc-smoke-berlin
+  max_image_size: 1600
+  mesher: poisson
+  dense: true
+  gpu_minutes_estimate: 10

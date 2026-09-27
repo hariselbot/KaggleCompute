@@ -6,15 +6,24 @@
 set -euo pipefail
 STAGE="$1"; WORK="$2"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-P() { python3 -c "import json,os;print(json.loads(os.environ['KC_PARAMS']).get('$1','$2'))"; }
+P() { python3 -c "import json,os;print(json.loads(os.environ['KC_PARAMS']).get('$1','${2:-}'))"; }
 IMAGES="$WORK/images"
 OUT="$WORK/output"; mkdir -p "$OUT"
 
 case "$STAGE" in
   fetch)
-    python3 -m kaggle datasets download -d "$(P input_dataset)" -p "$WORK/input" --unzip
+    # the job's dataset is already mounted at /kaggle/input/<slug> via dataset_sources;
+    # fall back to a CLI download for ad-hoc/local runs
+    SLUG="$(basename "$(P input_dataset)")"
+    SRC=""
+    if [ -d "/kaggle/input/$SLUG" ]; then
+      SRC="/kaggle/input/$SLUG"; echo "using mounted dataset: $SRC"
+    else
+      kaggle datasets download -d "$(P input_dataset)" -p "$WORK/input" --unzip
+      SRC="$WORK/input"; echo "downloaded dataset to: $SRC"
+    fi
     # accept either an images/ folder or a flat pile of images
-    if [ -d "$WORK/input/images" ]; then ln -sfn "$WORK/input/images" "$IMAGES"; else mkdir -p "$IMAGES"; find "$WORK/input" -maxdepth 2 -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' \) -exec cp {} "$IMAGES/" \;; fi
+    if [ -d "$SRC/images" ]; then ln -sfn "$SRC/images" "$IMAGES"; else mkdir -p "$IMAGES"; find "$SRC" -maxdepth 2 -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' \) -exec cp {} "$IMAGES/" \;; fi
     echo "images: $(find -L "$IMAGES" -type f | wc -l)"
     ;;
   install)

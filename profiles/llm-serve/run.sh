@@ -2,7 +2,7 @@
 # KaggleCompute llm-serve profile - Ollama + key-protected cloudflared tunnel.
 set -euo pipefail
 STAGE="$1"; WORK="$2"
-P() { python3 -c "import json,os;print(json.loads(os.environ['KC_PARAMS']).get('$1','$2'))"; }
+P() { python3 -c "import json,os;print(json.loads(os.environ['KC_PARAMS']).get('$1','${2:-}'))"; }
 HERE="$(cd "$(dirname "$0")" && pwd)"
 
 case "$STAGE" in
