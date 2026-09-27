@@ -36,11 +36,14 @@ def dcall(fn, *args, **kw):
     """
     try:
         params = inspect.signature(fn).parameters
+        kw = {k: v for k, v in kw.items() if k in params}
+        if "device" in params and hasattr(pycolmap, "Device"):
+            kw.setdefault("device", pycolmap.Device.cuda)
     except (TypeError, ValueError):
-        params = {}
-    kw = {k: v for k, v in kw.items() if k in params}
-    if "device" in params and hasattr(pycolmap, "Device"):
-        kw.setdefault("device", pycolmap.Device.cuda)
+        # pybind builtins expose no signature: pass kwargs through and let
+        # pybind validate (a wrong name raises TypeError, not silent drops).
+        if hasattr(pycolmap, "Device"):
+            kw.setdefault("device", pycolmap.Device.cuda)
     return fn(*args, **kw)
 
 
@@ -117,11 +120,14 @@ def stage_stereo():
 def stage_fusion():
     t0 = time.time()
     fused = DENSE / "fused.ply"
+    # output_type="ply" is required: the default "bin" treats output_path as a
+    # model DIRECTORY and fails ExistsDir on a .ply file path (COLMAP 4.x).
     try:
-        dcall(pycolmap.stereo_fusion, *str_paths(fused, DENSE), input_type="geometric")
+        dcall(pycolmap.stereo_fusion, *str_paths(fused, DENSE),
+              input_type="geometric", output_type="ply")
     except Exception as e:
         print(f"geometric fusion failed ({e}), retrying photometric")
-        dcall(pycolmap.stereo_fusion, *str_paths(fused, DENSE))
+        dcall(pycolmap.stereo_fusion, *str_paths(fused, DENSE), output_type="ply")
     shutil.copy(fused, OUT / "fused.ply")
     print(f"fusion: {time.time()-t0:.1f}s -> {OUT/'fused.ply'}")
 
