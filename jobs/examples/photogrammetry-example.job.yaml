@@ -1,0 +1,8 @@
+job_id: example-scan-001
+profile: photogrammetry
+params:
+  input_dataset: youruser/your-images-dataset   # dataset containing an images/ folder
+  matcher: exhaustive
+  dense: true
+  mesher: poisson
+  gpu_minutes_estimate: 180

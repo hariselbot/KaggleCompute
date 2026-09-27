@@ -1,0 +1,14 @@
+name: llm-serve
+path: interactive
+description: Ollama OpenAI-compatible endpoint behind a key-protected tunnel
+params:
+  model: qwen2.5:14b          # any Ollama tag or HF GGUF ref; 27B Q4_K_M fits 2x16GB
+  api_key: null               # required: key clients must send as X-API-Key
+  num_ctx: 65536
+  keep_alive: -1              # -1 = stay pinned in VRAM for the session
+  idle_shutdown_minutes: 30   # exit (stop quota drain) after this much silence
+  gpu_minutes_estimate: 60
+stages:
+  - {name: install, gpu: false}
+  - {name: pull, gpu: false}
+  - {name: serve, gpu: true}

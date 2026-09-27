@@ -1,0 +1,17 @@
+# KaggleCompute global configuration
+quota:
+  weekly_gpu_minutes: 1800      # 30 h Kaggle free tier - the whole budget, no paid overflow
+  drain_multiplier: 1           # VERIFY AT FIRST SESSION: set to 2 if T4x2 drains quota at 2x
+paths:
+  batch:
+    weekly_gpu_minutes: null    # null = uncapped within the global budget
+  interactive:
+    weekly_gpu_minutes: null
+  workbench:
+    weekly_gpu_minutes: null
+state:
+  state_dataset: null           # e.g. "hariselbot/kagglecompute-state" - set after first run
+kaggle:
+  default_accelerator: null     # VERIFY AT SETUP: T4x2 accelerator id for CLI pushes
+  max_session_hours: 12
+profile_defaults: {}

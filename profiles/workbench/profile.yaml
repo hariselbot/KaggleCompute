@@ -1,0 +1,10 @@
+name: workbench
+path: workbench
+description: escape hatch - run an arbitrary command in a GPU session
+params:
+  command: null               # required: shell command to run in the session
+  input_dataset: null         # optional: downloaded and unzipped into work dir first
+  gpu_minutes_estimate: 60
+stages:
+  - {name: fetch, gpu: false}
+  - {name: run, gpu: true}

@@ -1,0 +1,5 @@
+job_id: experiment-001
+profile: workbench
+params:
+  command: "python3 -c \"import torch; print(torch.cuda.is_available())\" || nvidia-smi"
+  gpu_minutes_estimate: 15
