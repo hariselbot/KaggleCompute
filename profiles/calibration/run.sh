@@ -4,6 +4,9 @@
 set -uo pipefail
 STAGE="$1"; WORK="$2"
 mkdir -p "$WORK/cal"; cd "$WORK/cal"
+# everything also lands in results.txt so it survives as a downloadable kernel output file
+exec > >(tee -a "$WORK/results.txt") 2>&1
+echo "----- stage: $STAGE -----"
 
 case "$STAGE" in
   env)
