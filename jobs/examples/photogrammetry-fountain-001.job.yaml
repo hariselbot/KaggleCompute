@@ -1,0 +1,9 @@
+job_id: photogrammetry-fountain-001
+profile: photogrammetry
+params:
+  input_dataset: null
+  input_url: https://cvg-data.inf.ethz.ch/local-feature-evaluation-schoenberger2017/Strecha-Fountain.zip
+  max_image_size: 3200
+  mesher: poisson
+  dense: true
+  gpu_minutes_estimate: 20

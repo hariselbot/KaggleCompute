@@ -2,19 +2,29 @@ name: photogrammetry
 path: batch
 description: COLMAP sparse+dense reconstruction with meshing (reference profile)
 params:
-  input_dataset: null        # required: <user>/<slug> containing an images/ folder
-  matcher: exhaustive        # exhaustive | sequential | vocab_tree
-  dense: true                # run dense stereo + fusion
-  mesher: poisson            # poisson | delaunay
-  max_image_size: 3200       # COLMAP SiftExtraction.max_image_size
-  gpu_minutes_estimate: 120  # admission-control planning figure
+  input_dataset: null
+  input_url: null
+  matcher: exhaustive
+  dense: true
+  mesher: poisson
+  max_image_size: 3200
+  gpu_minutes_estimate: 120
 stages:
-  - {name: fetch, gpu: false}
-  - {name: install, gpu: false}
-  - {name: extract, gpu: true}
-  - {name: match, gpu: true}
-  - {name: sfm, gpu: false}
-  - {name: undistort, gpu: false}
-  - {name: stereo, gpu: true}
-  - {name: fusion, gpu: false}
-  - {name: mesh, gpu: false}
+- name: fetch
+  gpu: false
+- name: install
+  gpu: false
+- name: extract
+  gpu: true
+- name: match
+  gpu: true
+- name: sfm
+  gpu: false
+- name: undistort
+  gpu: false
+- name: stereo
+  gpu: true
+- name: fusion
+  gpu: false
+- name: mesh
+  gpu: false

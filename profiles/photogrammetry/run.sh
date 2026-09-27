@@ -12,18 +12,31 @@ OUT="$WORK/output"; mkdir -p "$OUT"
 
 case "$STAGE" in
   fetch)
-    # the job's dataset is already mounted at /kaggle/input/<slug> via dataset_sources;
-    # fall back to a CLI download for ad-hoc/local runs
-    SLUG="$(basename "$(P input_dataset)")"
     SRC=""
-    if [ -d "/kaggle/input/$SLUG" ]; then
-      SRC="/kaggle/input/$SLUG"; echo "using mounted dataset: $SRC"
+    URL="$(P input_url)"
+    DS="$(P input_dataset)"
+    if [ -n "$URL" ]; then
+      mkdir -p "$WORK/input"
+      curl -sfSL -o "$WORK/input/data.zip" "$URL"
+      (cd "$WORK/input" && unzip -oq data.zip)
+      SRC="$WORK/input"; echo "fetched input_url -> $SRC"
     else
-      kaggle datasets download -d "$(P input_dataset)" -p "$WORK/input" --unzip
-      SRC="$WORK/input"; echo "downloaded dataset to: $SRC"
+      # dataset path: prefer the mounted /kaggle/input/<slug>, fall back to CLI download
+      SLUG="$(basename "$DS")"
+      if [ -d "/kaggle/input/$SLUG" ]; then
+        SRC="/kaggle/input/$SLUG"; echo "using mounted dataset: $SRC"
+      else
+        kaggle datasets download -d "$DS" -p "$WORK/input" --unzip
+        SRC="$WORK/input"; echo "downloaded dataset to: $SRC"
+      fi
     fi
-    # accept either an images/ folder or a flat pile of images
-    if [ -d "$SRC/images" ]; then ln -sfn "$SRC/images" "$IMAGES"; else mkdir -p "$IMAGES"; find "$SRC" -maxdepth 2 -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' \) -exec cp {} "$IMAGES/" \;; fi
+    # prefer a directory literally named images/, else collect every image under SRC
+    if [ -d "$SRC/images" ]; then
+      ln -sfn "$SRC/images" "$IMAGES"
+    else
+      mkdir -p "$IMAGES"
+      find "$SRC" -maxdepth 4 -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' \) -exec cp {} "$IMAGES/" \;
+    fi
     echo "images: $(find -L "$IMAGES" -type f | wc -l)"
     ;;
   install)
