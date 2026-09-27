@@ -1,11 +1,19 @@
 name: calibration
 path: workbench
-description: one-time platform calibration - env, COLMAP install timing, GPU SIFT smoke, tunnel+key test, quota timestamps
+description: one-time platform calibration - env, COLMAP install timing, GPU SIFT
+  smoke, tunnel+key test, quota timestamps
 params:
-  gpu_minutes_estimate: 10
+  gpu_minutes_estimate: 15
 stages:
-  - {name: env, gpu: false}
-  - {name: colmap_install, gpu: false}
-  - {name: colmap_gpu_smoke, gpu: true}
-  - {name: tunnel_test, gpu: false}
-  - {name: quota_probe, gpu: false}
+- name: env
+  gpu: false
+- name: colmap_install
+  gpu: false
+- name: colmap_gpu_smoke
+  gpu: true
+- name: gpu_load
+  gpu: true
+- name: tunnel_test
+  gpu: false
+- name: quota_probe
+  gpu: false

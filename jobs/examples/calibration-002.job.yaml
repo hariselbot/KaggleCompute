@@ -1,0 +1,4 @@
+job_id: calibration-002
+profile: calibration
+params:
+  gpu_minutes_estimate: 15

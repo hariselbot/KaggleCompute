@@ -12,6 +12,6 @@ paths:
 state:
   state_dataset: null           # e.g. "hariselbot/kagglecompute-state" - set after first run
 kaggle:
-  default_accelerator: null     # VERIFY AT SETUP: T4x2 accelerator id for CLI pushes
+  default_accelerator: null     # CLI 1.7.4.5 cannot select accelerator; pushed kernels take account default GPU
   max_session_hours: 12
 profile_defaults: {}
