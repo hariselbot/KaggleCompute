@@ -53,6 +53,18 @@ python runner/connector.py download --job-id my-first-job --dest ./out
 Open the matching thin notebook in `notebooks/`, edit the `JOB` dict in the
 first cell, enable the T4x2 accelerator (Settings -> Accelerator), Run All.
 
+## Fetching run artifacts
+
+`kaggle kernels output` is basic-auth and Kaggle denies it for our kernels
+("Permission 'kernels.get' was denied"). Use the Bearer helper instead:
+
+```
+python3 tools/kc_download.py <username>/<kernel-slug> --list
+python3 tools/kc_download.py <username>/<kernel-slug> --out ./artifacts --include output/
+```
+
+Auth: `$KAGGLE_API_TOKEN`, else the key from `~/.kaggle/kaggle.json`.
+
 ## Docs
 
 - `CONNECTOR.md` - integration contract for external dev teams (**start here if you are integrating**)

@@ -10,7 +10,9 @@ Behavior:
   and KC_PARAMS (JSON). A stage with a .done checkpoint marker is skipped, so
   resubmitting after a session cap resumes where it stopped.
 - GPU-flagged stages are admission-checked against the budget ledger before
-  starting, and their wall time (x drain_multiplier) is recorded after.
+  starting. Stage wall times are recorded as detail; the billable entry is
+  one session record per job: whole-runner wall time x drain_multiplier
+  (Kaggle attaches the GPU for the entire session).
 - Always writes job-manifest.json with per-stage status (see CONNECTOR.md).
 Exit codes: 0 complete, 2 validation error, 3 budget refusal, 5 stage failure.
 """
@@ -104,6 +106,9 @@ def main():
     state_dir.mkdir(parents=True, exist_ok=True)
     ledger_path = work_dir / "ledger.json"
 
+    job_t0 = time.time()
+    gpu_stage_ran = False
+
     manifest = {
         "job_id": job_id, "profile": profile["name"], "status": "running",
         "stages": [], "gpu_minutes_total": 0.0, "outputs": {}, "error": None,
@@ -114,6 +119,13 @@ def main():
     env["KC_PARAMS"] = json.dumps(params)
     env["KC_JOB_ID"] = job_id
     env["KC_WORK"] = str(work_dir)
+
+    def record_session_if_gpu():
+        if not gpu_stage_ran:
+            return 0.0
+        session_min = (time.time() - job_t0) / 60.0 * drain
+        ledger.record_session(ledger_path, job_id, path, session_min)
+        return session_min
 
     for stage in stages:
         name, is_gpu = stage["name"], bool(stage.get("gpu"))
@@ -153,21 +165,21 @@ def main():
             manifest["stages"].append(entry)
             manifest["status"] = "failed"
             manifest["error"] = f"stage '{name}' exited {proc.returncode}"
+            manifest["gpu_minutes_total"] = round(record_session_if_gpu(), 2)
             write_manifest(work_dir, manifest)
             sys.exit(5)
 
         entry["status"] = "done"
         marker.touch()
         if is_gpu:
-            charged = minutes * drain
-            ledger.record(ledger_path, job_id, path, name, charged)
-            manifest["gpu_minutes_total"] += charged
+            gpu_stage_ran = True
+            ledger.record(ledger_path, job_id, path, name, minutes)  # detail only
         manifest["stages"].append(entry)
         write_manifest(work_dir, manifest)
         print(f"[{name}] done in {minutes:.1f} min")
 
     manifest["status"] = "complete"
-    manifest["gpu_minutes_total"] = round(manifest["gpu_minutes_total"], 2)
+    manifest["gpu_minutes_total"] = round(record_session_if_gpu(), 2)
     out_dir = work_dir / "output"
     if out_dir.exists():
         manifest["outputs"]["files"] = sorted(

@@ -2,9 +2,11 @@
 """KaggleCompute budget ledger.
 
 Kaggle's API does not expose remaining weekly quota, so this ledger
-self-accounts: every GPU stage's wall time (x drain_multiplier) is recorded,
-and admission control refuses work that would overrun the current quota
-week. Kaggle resets the weekly GPU quota Saturday 00:00 UTC (official
+self-accounts: Kaggle bills GPU quota for the whole GPU-attached session,
+so each job records one "session" entry (session wall time x
+drain_multiplier); per-stage entries are kept as detail only and never
+count toward usage. Admission control refuses work that would overrun
+the current quota week. Kaggle resets the weekly GPU quota Saturday 00:00 UTC (official
 announcement: kaggle.com/product-feedback/173129), so the ledger buckets
 usage by that quota week instead of a rolling 7-day window. Free tier only -
 there is no paid overflow path.
@@ -62,15 +64,33 @@ def usage_minutes(state, path=None, now=None):
     return sum(
         e["gpu_minutes"]
         for e in state["entries"]
-        if e["ts"] >= ws and (path is None or e.get("path") == path)
+        if e["ts"] >= ws
+        and e.get("kind", "session") == "session"  # stage-detail never bills
+        and (path is None or e.get("path") == path)
     )
 
 
-def record(path_to_ledger, job_id, path, stage, gpu_minutes, ts=None):
+def record(path_to_ledger, job_id, path, stage, gpu_minutes, ts=None,
+           kind="stage-detail"):
+    """Detail entry: raw stage wall minutes, never counted toward usage."""
     state = _prune(load(path_to_ledger))
     state["entries"].append({
-        "job_id": job_id, "path": path, "stage": stage,
+        "job_id": job_id, "path": path, "stage": stage, "kind": kind,
         "gpu_minutes": round(gpu_minutes, 2), "ts": ts or time.time(),
+    })
+    save(path_to_ledger, state)
+
+
+def record_session(path_to_ledger, job_id, path, session_minutes, ts=None):
+    """Billable entry: one per GPU job, session wall time x drain_multiplier.
+
+    Kaggle attaches the GPU for the whole session, so quota drains for the
+    full wall time (boot/fetch/install/teardown included - those make the
+    true cost slightly higher than what the runner can observe)."""
+    state = _prune(load(path_to_ledger))
+    state["entries"].append({
+        "job_id": job_id, "path": path, "stage": "session", "kind": "session",
+        "gpu_minutes": round(session_minutes, 2), "ts": ts or time.time(),
     })
     save(path_to_ledger, state)
 
@@ -96,6 +116,8 @@ def report(path_to_ledger, weekly_budget=DEFAULT_WEEKLY_GPU_MINUTES):
     state = _prune(load(path_to_ledger))
     by_path = {}
     for e in state["entries"]:
+        if e.get("kind", "session") != "session":
+            continue  # stage detail is not billed usage
         by_path[e.get("path", "?")] = by_path.get(e.get("path", "?"), 0) + e["gpu_minutes"]
     used = usage_minutes(state)
     lines = [f"quota week (from Sat 00:00 UTC) GPU usage: {used:.1f} / {weekly_budget} min "
@@ -110,22 +132,33 @@ if __name__ == "__main__":
         import tempfile, os
         with tempfile.TemporaryDirectory() as d:
             lp = os.path.join(d, "ledger.json")
+            # stage detail never counts; sessions bill
             record(lp, "j1", "batch", "extract", 100.0)
             record(lp, "j1", "batch", "stereo", 200.0)
-            record(lp, "j2", "interactive", "serve", 50.0)
-            ok, _ = check(lp, "batch", 1400.0)
+            record_session(lp, "j1", "batch", 420.0)  # session wall x drain
+            record_session(lp, "j2", "interactive", 50.0)
+            assert abs(usage_minutes(load(lp)) - 470.0) < 0.01, \
+                "only session entries may count toward usage"
+            ok, _ = check(lp, "batch", 1300.0)
             assert ok, "should admit within budget"
-            ok, why = check(lp, "batch", 1500.0)
+            ok, why = check(lp, "batch", 1400.0)
             assert not ok and "global budget" in why
             ok, why = check(lp, "interactive", 100.0, path_budget=100.0)
             assert not ok and "path" in why
+            # legacy entries (no kind) still count, pre-session-model compat
+            state = load(lp)
+            state["entries"].append({"job_id": "j0", "path": "batch",
+                                     "stage": "extract", "gpu_minutes": 60.0,
+                                     "ts": time.time()})
+            save(lp, state)
+            assert abs(usage_minutes(load(lp)) - 530.0) < 0.01
             # quota-week boundary: entries before Saturday 00:00 UTC must not count
             from datetime import datetime, timezone
             old_ts = week_start() - 3600  # one hour before this week's reset
-            record(lp, "j0", "batch", "extract", 1700.0, ts=old_ts)
-            # 350 (this week) + 1400 planned = 1750 < 1800; if the stale 1700
+            record_session(lp, "j9", "batch", 1700.0, ts=old_ts)
+            # 530 (this week) + 1200 planned = 1730 < 1800; if the stale 1700
             # from the previous quota week leaked in, this would refuse.
-            ok, why = check(lp, "batch", 1400.0)
+            ok, why = check(lp, "batch", 1200.0)
             assert ok, f"previous quota week must not count: {why}"
             assert abs(week_start(old_ts) - (week_start() - 7 * 24 * 3600)) < 1
             print(report(lp))
