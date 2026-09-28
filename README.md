@@ -32,6 +32,8 @@ Budget reality (Kaggle free tier, verified 2026-09-27):
 | `llm-serve` | interactive | Ollama serving an OpenAI-compatible endpoint through a key-protected tunnel. Chatbot vs coding tool is the same profile with a different `model` parameter. |
 | `workbench` | workbench | Escape hatch: sync any folder of code+data into a GPU session and run any command. |
 
+Plus `proxy/` (not a profile - no kernel involved): routes plain LLM chat calls from your machine through Kaggle's hosted Model Proxy (Benchmarks AI credit, $-budgeted). See CONNECTOR.md section 8.
+
 ## Quickstart (headless)
 
 ```bash

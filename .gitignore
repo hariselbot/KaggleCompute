@@ -3,3 +3,8 @@ __pycache__/
 kc-work/
 ledger.json
 .kc-state/
+
+# LLM proxy credentials and state - never commit secrets (repo is public)
+.env
+*.env
+.kc-llm-state/

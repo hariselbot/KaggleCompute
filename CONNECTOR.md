@@ -137,3 +137,56 @@ are for tasks you want parameterized and repeatable.
 See `docs/kaggle-setup.md`: phone verification (required for free GPU +
 internet), one manual T4x2 enable, API token for the CLI. Your integration
 never needs the owner's credentials beyond the Kaggle API token it is given.
+
+## 8. LLM proxy (model calls, no GPU involved)
+
+Separate from kernel jobs: `proxy/` routes plain LLM chat calls from your local
+machine through Kaggle's hosted Model Proxy (the Kaggle Benchmarks AI credit,
+dollar-denominated). Nothing runs in a Kaggle session; no GPU quota is touched.
+
+```bash
+python proxy/cli.py auth                 # mint/refresh proxy credentials now
+python proxy/cli.py quota                # show Kaggle AI-credit quota + admission state
+python proxy/cli.py models               # list catalog models; flags if default_model is missing
+python proxy/cli.py chat --prompt "Summarize this log" [--model claude-sonnet-5]
+```
+
+Python API:
+
+```python
+from proxy import client
+resp = client.chat([{"role": "user", "content": "hello"}], model="gpt-6-astra")
+print(resp["choices"][0]["message"]["content"])
+```
+
+**Kaggle key priority (input wins over files):**
+`--kaggle-key` > `KC_KAGGLE_KEY` env > config `llm_proxy.kaggle_key` >
+`KAGGLE_API_TOKEN` env > `~/.kaggle/access_token` > `~/.kaggle/kaggle.json`
+(classic JSON or raw token). Keys are never written to the repo; minted proxy
+credentials live in `.kc-llm-state/` (gitignored) and auto re-mint
+`refresh_margin_seconds` before their server-set expiry.
+
+**Budget semantics.** `kaggle b quota` (recent CLI) reports Daily/Monthly used,
+remaining, total, refillAt. `llm_proxy.daily_usd_cap` / `monthly_usd_cap` are OUR
+caps - set them at or below Kaggle's refill amounts. Chat calls are refused with
+exit 3 once usage hits a cap, and free up at refill. If the quota command is
+unavailable (CLI 1.7.x from PyPI lacks it; install the CLI from
+github.com/Kaggle/kaggle-cli, needs Python 3.11+), admission falls back to
+EXACT local accounting: responses carry per-call dollar costs, summed per
+UTC day/month from `.kc-llm-state/llm-usage.jsonl`. Kaggle's server-side
+budget is a hard wall at $0 regardless; there is no paid overflow.
+
+**Verified behavior (2026-09-28, jarri81).** The locally minted token serves a
+CURATED SUBSET of the catalog, not the full list: 8 models at mint time
+(Claude Sonnet 5, DeepSeek-R1, Gemini 3 Flash / 3.1 Flash-Lite, IBM Granite
+4.0 H Small, GPT-5.4 nano, gpt-oss-120b, Qwen3 Next 80B). See the exact set in
+`LLMS_AVAILABLE` from `kaggle b init -y`; use those vendor/model slug strings
+(e.g. `anthropic/claude-sonnet-5@default`) - catalog slugs from
+`kaggle b t models` are not all callable locally. Proxy tokens live ~2 hours
+(server-set expiry); `proxy/auth.py` re-mints automatically. Responses include
+exact per-call dollar costs (`usage.cost.*_nanodollars`), so the usage log is
+real dollar accounting. The proxy speaks OpenAI chat completions at
+`<base>/openapi` (plus a Google GenAI flavor at `<base>/genai`); temperature
+is currently unsupported upstream. This is Benchmarks local-development
+surface used as a general router - keep volume modest and don't make it your
+only model path.
