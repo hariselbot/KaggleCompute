@@ -12,7 +12,7 @@ Call signatures verified against the pycolmap-cuda12 wheel stubs (COLMAP 4.x):
 - patch_match_stereo(workspace, options=PatchMatchOptions())  # CUDA only
 - stereo_fusion(out_ply, workspace, input_type=..., output_type="ply")
   (default output_type="bin" treats output_path as a model DIRECTORY)
-- poisson_meshing(in_ply, out_ply)
+- poisson_meshing(in_ply, out_ply)  # BUG: emits BE vertex floats under an LE header; stage_mesh normalizes
 """
 import json
 import os
@@ -114,14 +114,87 @@ def stage_fusion():
     print(f"fusion: {time.time()-t0:.1f}s -> {OUT/'fused.ply'}")
 
 
+def normalize_ply(path):
+    """Rewrite a binary PLY as canonical little-endian in place, dropping
+    corrupt vertices.
+
+    pycolmap's poisson_meshing (PoissonRecon) writes a header that claims
+    binary_little_endian but emits BIG-endian vertex floats (faces stay LE),
+    and can include garbage vertex records (1e30+ coords). Standard readers
+    (trimesh, Open3D, CloudCompare) load it as radiating shards. Detect the
+    dominant vertex endianness by sampling, byteswap, drop non-finite/outlier
+    vertices with their faces, and rewrite true little-endian.
+    """
+    import re
+    import numpy as np
+    data = path.read_bytes()
+    hdr_end = data.index(b"end_header\n") + len(b"end_header\n")
+    header = data[:hdr_end].decode()
+    if "binary_little_endian" not in header:
+        return  # ascii or unexpected format: leave alone
+    nverts = int(re.search(r"element vertex (\d+)", header).group(1))
+    nfaces = int(re.search(r"element face (\d+)", header).group(1))
+    props = re.findall(r"property (\w+) (\w+)", header.split("element face")[0])
+    np_le = {"float": "<f4", "float32": "<f4", "uchar": "u1", "uint8": "u1",
+             "int": "<i4", "int32": "<i4", "double": "<f8"}
+    rec = sum(np.dtype(np_le[t]).itemsize for t, _ in props)
+    names = [n for _, n in props]
+
+    def parse(endian, count, offset):
+        dt = np.dtype([(n, np_le[t].replace("<", endian)) for t, n in props])
+        return np.frombuffer(data, dtype=dt, count=count, offset=offset)
+
+    def sane_frac(va):
+        xyz = np.stack([va["x"], va["y"], va["z"]], 1)
+        return (np.isfinite(xyz).all(1) & (np.abs(xyz) < 1e4).all(1)).mean()
+
+    sample = min(nverts, 20000)
+    if sane_frac(parse("<", sample, hdr_end)) >= sane_frac(parse(">", sample, hdr_end)):
+        va = parse("<", nverts, hdr_end)  # already little-endian
+    else:
+        va = parse(">", nverts, hdr_end)  # big-endian: byteswap on rewrite
+    xyz = np.stack([va["x"], va["y"], va["z"]], 1)
+    ok = np.isfinite(xyz).all(1) & (np.abs(xyz) < 1e4).all(1)  # hard garbage
+    # keep the dense scene core: p1..p99 bbox + half its span of margin;
+    # Poisson extrapolation strays beyond that render as shard triangles
+    if ok.any():
+        lo, hi = np.percentile(xyz[ok], [1, 99], axis=0)
+        margin = 0.5 * (hi - lo).max()
+        ok &= (xyz >= lo - margin).all(1) & (xyz <= hi + margin).all(1)
+    faces_off = hdr_end + nverts * rec
+    fa = np.frombuffer(data, dtype=[("n", "<i4"), ("a", "<i4"), ("b", "<i4"), ("c", "<i4")],
+                       count=nfaces, offset=faces_off)
+    if not ok.all():
+        remap = np.full(nverts, -1, dtype=np.int64)
+        remap[ok] = np.arange(int(ok.sum()))
+        fidx = np.stack([fa["a"], fa["b"], fa["c"]], 1)
+        fok = ok[fidx].all(1)
+        fidx = remap[fidx[fok]].astype(np.int32)
+        fa = np.empty(fidx.shape[0], dtype=fa.dtype)
+        fa["n"] = 3
+        fa["a"], fa["b"], fa["c"] = fidx[:, 0], fidx[:, 1], fidx[:, 2]
+    nverts_out = int(ok.sum())
+    dt_out = np.dtype([(n, np_le[t]) for t, n in props])
+    out = np.empty(nverts_out, dtype=dt_out)
+    for _, n in props:
+        out[n] = va[n][ok]
+    header = header.replace(f"element vertex {nverts}", f"element vertex {nverts_out}")
+    header = header.replace(f"element face {nfaces}", f"element face {len(fa)}")
+    path.write_bytes(b"".join([header.encode(), out.tobytes(), fa.tobytes()]))
+    print(f"normalize_ply: {path.name} -> true little-endian, "
+          f"{nverts_out}/{nverts} verts, {len(fa)}/{nfaces} faces kept")
+
+
 def stage_mesh():
     fused = OUT / "fused.ply"
     mesh = OUT / "mesh.ply"
     mesher = P.get("mesher", "poisson")
     if mesher == "poisson" and hasattr(pycolmap, "poisson_meshing"):
         pycolmap.poisson_meshing(fused, mesh)
+        normalize_ply(mesh)  # PoissonRecon writes BE verts under an LE header
     elif mesher == "delaunay" and hasattr(pycolmap, "delaunay_meshing"):
         pycolmap.delaunay_meshing(DENSE, mesh)
+        normalize_ply(mesh)
     else:
         print("wheel exposes no mesher; falling back to Open3D Poisson")
         import open3d as o3d
